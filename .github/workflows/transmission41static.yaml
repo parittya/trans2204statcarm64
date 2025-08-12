@@ -36,7 +36,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential autoconf automake libtool pkg-config \
+          sudo apt-get install -y build-essential tar autoconf automake libtool pkg-config \
             gcc-aarch64-linux-gnu g++-aarch64-linux-gnu make curl git wget binutils-aarch64-linux-gnu
 
       - name: Prepare sources directory
