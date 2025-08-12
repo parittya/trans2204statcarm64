@@ -1,4 +1,4 @@
-name: Build Transmission 4.1.0-beta2 for Aarch64
+name: Build Transmission 4.1.0-beta2 from repo for Aarch64
 
 on:
   push:
@@ -34,12 +34,11 @@ jobs:
             libcurl4-openssl-dev \
             libevent-dev \
             pkg-config \
-            wget \
-            xz-utils
+            git
 
-          wget https://github.com/transmission/transmission/archive/refs/tags/4.1.0-beta.2.tar.gz
-          tar -xf 4.1.0-beta.2.tar.gz
-          cd transmission-4.1.0-beta.2
+          git clone https://github.com/transmission/transmission.git
+          cd transmission
+          git checkout 4.1.0-beta.2
 
           mkdir build
           cd build
