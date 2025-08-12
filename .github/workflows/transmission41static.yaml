@@ -1,70 +1,157 @@
-name: Build Transmission 4.1.0-beta2 from repo for Aarch64
+name: Full static build Transmission 4.1.0-beta.2 (aarch64, Ubuntu 22.04) with caching
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    env:
+      PREFIX: ${{ github.workspace }}/build
+      PATH: ${{ github.workspace }}/build/bin:$PATH
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v3
 
-    - name: Set up QEMU for Aarch64
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: all
+      - name: Cache sources
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ github.workspace }}/sources
+          key: sources-${{ runner.os }}-${{ hashFiles('**/download-list.txt') }}
+          restore-keys: |
+            sources-${{ runner.os }}-
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+      - name: Cache build output
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ github.workspace }}/build
+          key: build-${{ runner.os }}-aarch64-${{ hashFiles('**/transmission/**') }}
+          restore-keys: |
+            build-${{ runner.os }}-aarch64-
 
-    - name: Build and run in Aarch64 container
-      run: |
-        docker run --rm -v $(pwd):/workspace --platform linux/arm64 ubuntu:22.04 bash -c "
-          apt-get update && apt-get install -y \
-            build-essential \
-            cmake \
-            libssl-dev \
-            libcurl4-openssl-dev \
-            libevent-dev \
-            pkg-config \
-            git
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf automake libtool pkg-config \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu make curl git wget binutils-aarch64-linux-gnu
 
-          git clone https://github.com/transmission/transmission.git
-          cd transmission
-          git checkout 4.1.0-beta.2
+      - name: Prepare sources directory
+        run: mkdir -p ${{ github.workspace }}/sources
 
-          mkdir build
+      - name: Download zlib source
+        run: |
+          if [ ! -f ${{ github.workspace }}/sources/zlib-1.2.13.tar.gz ]; then
+            curl -L -o ${{ github.workspace }}/sources/zlib-1.2.13.tar.gz https://zlib.net/zlib-1.2.13.tar.gz
+          fi
+
+      - name: Download libevent source
+        run: |
+          if [ ! -f ${{ github.workspace }}/sources/libevent-2.1.12-stable.tar.gz ]; then
+            curl -L -o ${{ github.workspace }}/sources/libevent-2.1.12-stable.tar.gz https://github.com/libevent/libevent/releases/download/release-2.1.12-stable/libevent-2.1.12-stable.tar.gz
+          fi
+
+      - name: Download OpenSSL source
+        run: |
+          if [ ! -f ${{ github.workspace }}/sources/openssl-3.1.3.tar.gz ]; then
+            curl -L -o ${{ github.workspace }}/sources/openssl-3.1.3.tar.gz https://www.openssl.org/source/openssl-3.1.3.tar.gz
+          fi
+
+      - name: Download libcurl source
+        run: |
+          if [ ! -f ${{ github.workspace }}/sources/curl-8.2.1.tar.gz ]; then
+            curl -L -o ${{ github.workspace }}/sources/curl-8.2.1.tar.gz https://curl.se/download/curl-8.2.1.tar.gz
+          fi
+
+      - name: Download Transmission source
+        run: |
+          if [ ! -f ${{ github.workspace }}/sources/transmission-4.1.0-beta.2.tar.gz ]; then
+            curl -L -o ${{ github.workspace }}/sources/transmission-4.1.0-beta.2.tar.gz https://github.com/transmission/transmission/archive/refs/tags/4.1.0-beta.2.tar.gz
+          fi
+
+      - name: Extract and build zlib (static)
+        run: |
+          mkdir -p build
           cd build
-
-          cmake -DTRANSMISSION_DAEMON_STATIC=ON \
-                -DTRANSMISSION_CLI_STATIC=ON \
-                -DTRANSMISSION_GTK_STATIC=ON \
-                -DCMAKE_BUILD_TYPE=Release \
-                ..
-
+          if [ ! -d zlib-1.2.13 ]; then
+            tar xzf ../sources/zlib-1.2.13.tar.gz
+          fi
+          cd zlib-1.2.13
+          CC=aarch64-linux-gnu-gcc ./configure --static --prefix=$PREFIX
           make -j$(nproc)
-          
-          cp daemon/transmission-daemon /workspace/
-          cp cli/transmission-remote /workspace/
-          cp cli/transmission-show /workspace/
-          cp cli/transmission-edit /workspace/
-          cp cli/transmission-create /workspace/
-        "
+          make install
 
-    - name: Archive static binaries
-      uses: actions/upload-artifact@v4
-      with:
-        name: transmission-4.1.0-beta2-aarch64-static
-        path: |
-          transmission-daemon
-          transmission-remote
-          transmission-show
-          transmission-edit
-          transmission-create
+      - name: Extract and build libevent (static)
+        run: |
+          cd build
+          if [ ! -d libevent-2.1.12-stable ]; then
+            tar xzf ../sources/libevent-2.1.12-stable.tar.gz
+          fi
+          cd libevent-2.1.12-stable
+          ./configure --host=aarch64-linux-gnu --prefix=$PREFIX --disable-shared --enable-static
+          make -j$(nproc)
+          make install
+
+      - name: Extract and build OpenSSL (static)
+        run: |
+          cd build
+          if [ ! -d openssl-3.1.3 ]; then
+            tar xzf ../sources/openssl-3.1.3.tar.gz
+          fi
+          cd openssl-3.1.3
+          ./Configure linux-aarch64 no-shared no-tests --prefix=$PREFIX
+          make -j$(nproc)
+          make install_sw
+
+      - name: Extract and build libcurl (static)
+        run: |
+          cd build
+          if [ ! -d curl-8.2.1 ]; then
+            tar xzf ../sources/curl-8.2.1.tar.gz
+          fi
+          cd curl-8.2.1
+          ./configure --host=aarch64-linux-gnu --prefix=$PREFIX --disable-shared --enable-static \
+            --with-ssl=$PREFIX --with-zlib=$PREFIX
+          make -j$(nproc)
+          make install
+
+      - name: Extract Transmission source
+        run: |
+          if [ ! -d transmission ]; then
+            tar xzf sources/transmission-4.1.0-beta.2.tar.gz
+            mv transmission-4.1.0-beta.2 transmission
+          fi
+
+      - name: Configure and build Transmission static
+        run: |
+          cd transmission
+          ./autogen.sh
+          CC=aarch64-linux-gnu-gcc \
+          CXX=aarch64-linux-gnu-g++ \
+          PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig \
+          ./configure --host=aarch64-linux-gnu \
+            --prefix=$PREFIX \
+            --disable-shared --enable-static \
+            --with-libevent=$PREFIX \
+            --with-openssl=$PREFIX \
+            --with-libcurl=$PREFIX \
+            --with-zlib=$PREFIX \
+            --without-gtk --without-qt
+          make clean
+          make LDFLAGS="-static -L$PREFIX/lib" -j$(nproc)
+
+      - name: Strip and show binary size
+        run: |
+          aarch64-linux-gnu-strip src/transmission-daemon src/transmission-cli
+          aarch64-linux-gnu-size src/transmission-daemon src/transmission-cli
+
+      - name: Upload built binaries
+        uses: actions/upload-artifact@v3
+        with:
+          name: transmission-4.1.0-beta2-full-static-aarch64
+          path: |
+            transmission/src/transmission-daemon
+            transmission/src/transmission-cli
