@@ -34,12 +34,11 @@ jobs:
             libcurl4-openssl-dev \
             libevent-dev \
             pkg-config \
-            wget \
-            xz-utils
+            git
 
-          wget https://github.com/transmission/transmission/releases/download/4.1.1/transmission-4.1.1.tar.xz
-          tar -xf transmission-4.1.1.tar.xz
-          cd transmission-4.1.1
+          git clone https://github.com/transmission/transmission.git
+          cd transmission
+          git checkout 4.1.1
 
           mkdir build
           cd build
